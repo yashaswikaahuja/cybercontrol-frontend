@@ -1,0 +1,92 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Users } from '@phosphor-icons/react';
+import api from '../../shared/api';
+
+interface Person { id: string; name: string; displayLabel: string; relationship: string; }
+interface Household { phone: string; persons: Person[]; }
+interface Service { id: string; label: string; icon: string; execution_type: string; }
+
+export default function NewJob() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<1 | 2>(1);
+  const [households, setHouseholds] = useState<Household[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<{ household: Household; person: Person } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.get('/customers/households').then(r => setHouseholds(r.data));
+    api.get('/services').then(r => setServices(r.data));
+  }, []);
+
+  const handleLaunch = async (service: Service) => {
+    if (!selectedPerson) return;
+    setLoading(true);
+    try {
+      await api.post('/jobs', { profileId: selectedPerson.person.id, serviceType: service.id });
+      navigate('/app/jobs');
+    } catch {} finally { setLoading(false); }
+  };
+
+  return (
+    <div className="max-w-lg mx-auto">
+      <h1 className="text-2xl font-semibold text-white tracking-tight mb-6">New Job</h1>
+
+      {step === 1 && (
+        <div>
+          <p className="text-sm text-gray-400 mb-4">Step 1 — Select Person</p>
+          {households.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+              <Users size={34} className="pt-muted mb-3" />
+              <p className="text-sm font-medium" style={{ color: 'hsl(var(--pt-ink))' }}>No customers yet</p>
+              <p className="text-xs pt-muted mt-1 mb-4 max-w-xs">Add a customer before starting a job.</p>
+              <button onClick={() => navigate('/app/customers')} className="btn-primary text-sm">Add customer</button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {households.map(h => (
+                <div key={h.phone} className="card p-3">
+                  <p className="text-xs text-gray-500 mb-2 px-2">{h.phone}</p>
+                  <div className="space-y-1">
+                    {h.persons.map(p => (
+                      <button key={p.id} onClick={() => { setSelectedPerson({ household: h, person: p }); setStep(2); }}
+                        className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-[#0a84ff]/20 text-sm text-white flex items-center gap-2 transition-all"
+                        style={{ transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0, 1)' }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'hsl(var(--pt-marigold) / 0.25)', color: 'hsl(var(--pt-marigold-deep))' }}>{p.name?.[0]}</div>
+                        <div>
+                          <div>{p.displayLabel || p.name}</div>
+                          <div className="text-[11px] text-gray-500 capitalize">{p.relationship}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 2 && selectedPerson && (
+        <div>
+          <button onClick={() => setStep(1)} className="btn-ghost flex items-center gap-1.5 text-xs mb-4">
+            <ArrowLeft size={14} weight="bold" /> Back
+          </button>
+          <p className="text-sm text-gray-400 mb-1">Step 2 — Select Service for</p>
+          <p className="text-white font-medium mb-4">{selectedPerson.person.displayLabel || selectedPerson.person.name} <span className="text-xs text-gray-500">({selectedPerson.household.phone})</span></p>
+          <div className="grid grid-cols-2 gap-3">
+            {services.map(s => (
+              <button key={s.id} onClick={() => handleLaunch(s)} disabled={loading}
+                className="card p-5 text-center transition-all disabled:opacity-50"
+                style={{ transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0, 1)' }}>
+                <span className="text-2xl block mb-2">{s.icon}</span>
+                <p className="text-sm text-white font-medium">{s.label}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

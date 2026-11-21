@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Photos proof · product demo</title>
+  <link rel="stylesheet" href="./demo-tokens.css" />
+  <style>
+    .board {
+      margin-top: 18px; display: flex; align-items: center; justify-content: center; gap: 36px;
+      min-height: 480px;
+    }
+    .box {
+      background: hsl(var(--pt-card)); border: 1px dashed hsl(var(--pt-border));
+      border-radius: 16px; padding: 16px 18px; text-align: center; min-width: 160px;
+      box-shadow: var(--shadow-paper); transition: .35s;
+    }
+    .box.ready { border: 2px solid hsl(var(--teal, 178 65% 38%)); border-style: solid; }
+    .ph {
+      width: 110px; height: 140px; margin: 10px auto; border-radius: 6px;
+      background: linear-gradient(135deg, #a8a29e, #78716c);
+    }
+    .ready .ph {
+      width: 92px; height: 118px; background: linear-gradient(135deg, #e7e5e4, #a8a29e); position: relative;
+    }
+    .ready .ph:after {
+      content: '4.5 × 3.5 cm'; position: absolute; left: 0; right: 0; bottom: 0;
+      background: #f5f5f4; font: 10px ui-monospace; padding: 4px;
+    }
+    .arrow { font-size: 28px; color: hsl(var(--marigold-deep)); }
+    .list { font-size: 14px; color: #444; line-height: 1.85; }
+    .export {
+      margin-top: 18px; opacity: 0; transform: translateY(8px); transition: .4s;
+    }
+    .export.show { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hub">
+      <aside class="sidebar">
+        <div class="sidebar-brand"><div class="mark">⚡</div><div class="name pt-display">Cyber<em>Control</em></div></div>
+        <nav>
+          <div class="nav-item"><span class="ic">⚡</span> Today</div>
+          <div class="nav-item"><span class="ic">👤</span> Customers</div>
+          <div class="nav-item"><span class="ic">🔎</span> Find Form</div>
+          <div class="nav-item"><span class="ic">📁</span> File Manager</div>
+          <div class="nav-item"><span class="ic">💬</span> Documents</div>
+          <div class="nav-item active"><span class="ic">📷</span> Photos</div>
+          <div class="nav-item"><span class="ic">⚙</span> Settings</div>
+        </nav>
+        <div class="sidebar-foot">Demo cafe · fictional data</div>
+      </aside>
+      <main class="main">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div>
+            <h1 class="page-title pt-display">Photos</h1>
+            <p class="page-sub">Passport / print-ready from demo photo</p>
+          </div>
+          <span class="badge-demo">Demo · fictional data</span>
+        </div>
+        <div class="board">
+          <div class="box" id="before"><div class="pt-label" style="font-size:10px;color:#777">Before</div><div class="ph"></div></div>
+          <div class="arrow" id="arrow">→</div>
+          <div class="box" id="after"><div class="pt-label" style="font-size:10px;color:#0f766e">Print ready</div><div class="ph"></div></div>
+          <div class="list">
+            <b style="color:hsl(var(--ink))">Passport size</b><br>
+            ✓ White background<br>✓ Exact dimensions<br>✓ PDF / print export
+            <div class="export" id="export"><button class="btn-primary" type="button" id="exportBtn">Export print sheet</button></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="./demo-fx.js"></script>
+  <script>
+    async function runOnce() {
+      const fx = window.DemoFx;
+      const after = document.getElementById('after');
+      const exportEl = document.getElementById('export');
+      const exportBtn = document.getElementById('exportBtn');
+      after.classList.remove('ready');
+      exportEl.classList.remove('show');
+      await fx.sleep(500);
+      await fx.moveTo(document.getElementById('before'), 600);
+      await fx.highlight(document.getElementById('before'), 250);
+      await fx.sleep(350);
+      await fx.moveTo(document.getElementById('arrow'), 400);
+      await fx.sleep(250);
+      after.classList.add('ready');
+      exportEl.classList.add('show');
+      await fx.moveTo(exportBtn, 650);
+      await fx.click(exportBtn);
+      await fx.sleep(1100);
+      window.__done = true;
+    }
+    if (window.DemoFx) { window.__ready = true; runOnce().catch(() => { window.__done = true; }); }
+  </script>
+</body>
+</html>

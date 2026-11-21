@@ -1,0 +1,7 @@
+{
+  "framework": "vite",
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "installCommand": "npx --yes pnpm@10.12.1 install --frozen-lockfile",
+  "cleanUrls": true
+}

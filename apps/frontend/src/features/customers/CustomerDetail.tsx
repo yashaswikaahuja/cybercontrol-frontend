@@ -1,0 +1,939 @@
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  ArrowLeft, Plus, PencilSimple, FileText,
+  Sparkle, CheckCircle, X, FilePdf, UserPlus, UploadSimple, ShareNetwork, Export, CopySimple, Check,
+  ChatCircle, FolderOpen,
+} from '@phosphor-icons/react';
+import api from '../../shared/api';
+import { toast } from '../../shared/toast';
+import { formatPhoneDisplay, phonesMatch } from '../../shared/phone';
+import { getCompleteness, flattenProfileData, buildVisibleSections } from '../../shared/profileSchema';
+import { ExtractProfileTarget, type ExtractSaveTarget } from '../../shared/ExtractProfileTarget';
+import { REVEAL_EASE as EASE, useReveal } from '../../shared/useReveal';
+
+interface Person { id: string; name: string; displayLabel: string; relationship: string; createdAt: string; updatedAt: string; }
+interface Household { phone: string; person_count: string; persons: Person[]; }
+interface DriveFile { id: string; fileName: string; fileUrl: string; customerId: string; customerName: string; timestamp: string; }
+interface PersonDetail { id: string; name: string; primary_contact_phone: string; data: any; display_label?: string; relationship?: string; }
+
+const RELATIONSHIPS = [
+  { value: 'self', label: 'Self' }, { value: 'spouse', label: 'Spouse' },
+  { value: 'parent', label: 'Parent' }, { value: 'child', label: 'Child' },
+  { value: 'sibling', label: 'Sibling' }, { value: 'other', label: 'Other' },
+];
+
+function DocThumb({ src, isPdf }: { src: string; isPdf: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return isPdf ? <FilePdf size={32} className="pt-muted" /> : <FileText size={32} className="pt-muted" />;
+  return <img src={src} className="w-full h-full object-cover" onError={() => setFailed(true)} />;
+}
+
+export default function CustomerDetail() {
+  const { id: phoneParam } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const phone = decodeURIComponent(phoneParam || '');
+  const personFromQuery = searchParams.get('person');
+
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [documents, setDocuments] = useState<DriveFile[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<string | null>(personFromQuery);
+  const [personDetail, setPersonDetail] = useState<PersonDetail | null>(null);
+  const [showAddPerson, setShowAddPerson] = useState(false);
+  const [extracting, setExtracting] = useState<string | null>(null);
+  const [extractedSuggestions, setExtractedSuggestions] = useState<any | null>(null);
+  const [, setExtractDocId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [extractError, setExtractError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [addingInSection, setAddingInSection] = useState<string | null>(null);
+  const [newFieldKey, setNewFieldKey] = useState('');
+  const [newFieldValue, setNewFieldValue] = useState('');
+  const [readiness, setReadiness] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [sharePhone, setSharePhone] = useState('');
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importToken, setImportToken] = useState('');
+  const [importMsg, setImportMsg] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const { reveal, trigger } = useReveal({ auto: false });
+
+  const loadHousehold = async () => {
+    setLoading(true);
+    setNotFound(false);
+    try {
+      const r = await api.get('/customers/households');
+      const h = (r.data || []).find((x: Household) => phonesMatch(x.phone, phone)) || null;
+      setHousehold(h);
+      setNotFound(!h);
+      if (h && h.persons.length > 0) {
+        // Prefer ?person= from Customers list (so searching Shubham opens Shubham, not Kamaljeet).
+        const fromQuery = personFromQuery && h.persons.some((p: Person) => p.id === personFromQuery)
+          ? personFromQuery
+          : null;
+        setSelectedPerson((prev) => {
+          if (fromQuery) return fromQuery;
+          if (prev && h.persons.some((p: Person) => p.id === prev)) return prev;
+          return h.persons[0].id;
+        });
+      }
+    } catch (e: any) {
+      setHousehold(null);
+      setNotFound(true);
+      setError(e?.response?.data?.error || e?.message || 'Could not load customer');
+    } finally {
+      setLoading(false);
+      trigger();
+    }
+  };
+  const loadDocuments = async () => {
+    try {
+      const r = await api.get('/drive/files/ws');
+      setDocuments(r.data.filter((d: any) => phonesMatch(d.customerId, phone)));
+    } catch {}
+  };
+  const loadPerson = async (personId: string) => {
+    try { const r = await api.get(`/customers/persons/${personId}`); setPersonDetail(r.data); } catch {}
+  };
+
+  useEffect(() => { loadHousehold(); loadDocuments(); loadReadiness(); }, [phone]);
+  // Same phone + new ?person= does NOT remount this page — must react to query changes
+  // (otherwise list click "Shubham" keeps showing Kamaljeet).
+  useEffect(() => {
+    if (!personFromQuery) return;
+    setSelectedPerson((prev) => (prev === personFromQuery ? prev : personFromQuery));
+    setPersonDetail(null);
+  }, [personFromQuery]);
+  useEffect(() => { if (selectedPerson) loadPerson(selectedPerson); }, [selectedPerson]);
+
+  const loadReadiness = async () => {
+    try { const r = await api.get(`/forms/readiness/${encodeURIComponent(phone)}`); setReadiness(r.data || []); } catch {}
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploading(true); setError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('phone', phone);
+      fd.append('personName', personDetail?.display_label || personDetail?.name || '');
+      await api.post('/customers/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await loadDocuments();
+    } catch (e: any) { setError(e.response?.data?.error || e.message || 'Upload failed'); }
+    finally { setUploading(false); }
+  };
+
+  const handleShare = async () => {
+    if (!selectedPerson) return;
+    try {
+      const r = await api.post(`/customers/share/${selectedPerson}`, {
+        targetEmail: shareEmail.trim() || undefined,
+        targetPhone: sharePhone.trim() || undefined,
+      });
+      setShareToken(r.data.token);
+    } catch (e: any) { setError(e.response?.data?.error || 'Share failed'); }
+  };
+
+  const handleImport = async () => {
+    if (!importToken.trim()) return;
+    setImportMsg('');
+    try {
+      const r = await api.post('/customers/import-shared', { token: importToken.trim() });
+      setImportMsg(`✓ Imported "${r.data.name}" (${r.data.fieldsImported} documents)`);
+      setImportToken('');
+      await loadHousehold(); await loadDocuments();
+    } catch (e: any) { setImportMsg(e.response?.data?.error || 'Import failed'); }
+  };
+
+  const addPerson = async (form: { name: string; relationship: string }) => {
+    try {
+      await api.post('/customers/persons', { phone, name: form.name, displayLabel: form.name, relationship: form.relationship });
+      setShowAddPerson(false); await loadHousehold();
+    } catch (e: any) { setError(e.message); }
+  };
+  const deletePerson = async (personId: string, personName: string) => {
+    if (!confirm(`Delete "${personName}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/customers/persons/${personId}`);
+      const remaining = (household?.persons || []).filter((p) => p.id !== personId);
+      if (selectedPerson === personId) {
+        setPersonDetail(null);
+        const nextId = remaining[0]?.id || null;
+        setSelectedPerson(nextId);
+        if (nextId) setSearchParams({ person: nextId }, { replace: true });
+        else setSearchParams({}, { replace: true });
+      }
+      await loadHousehold();
+    } catch (e: any) { setError(e.message); }
+  };
+  const saveField = async (key: string, value: string) => {
+    if (!selectedPerson) return;
+    try {
+      await api.patch(`/customers/persons/${selectedPerson}`, { fields: { [key]: { value, source: 'manual', confidence: 1 } } });
+      await loadPerson(selectedPerson); loadReadiness();
+    } catch (e: any) { setError(e.message); }
+    setEditingField(null);
+  };
+  const toFieldKey = (name: string) => name.toLowerCase().replace(/\s+/g, '_');
+  const handleAddField = () => {
+    if (newFieldKey && newFieldValue) {
+      saveField(toFieldKey(newFieldKey), newFieldValue);
+      setAddingInSection(null); setNewFieldKey(''); setNewFieldValue('');
+    }
+  };
+  const handleExtract = async (doc: DriveFile) => {
+    if (!selectedPerson) { setError('Select a person first'); return; }
+    setExtracting(doc.id); setError('');
+    try {
+      const r = await api.post('/process/extract', { fileId: doc.id });
+      setExtractedSuggestions(r.data.suggested); setExtractDocId(doc.id);
+    } catch (e: any) { setError(e.response?.data?.error || e.message || 'Extraction failed'); }
+    finally { setExtracting(null); }
+  };
+  const confirmExtraction = async (acceptedFields: Record<string, any>, target?: ExtractSaveTarget) => {
+    if (!selectedPerson) { setExtractError('No person selected'); return; }
+    if (target?.chooseProfile && !target.chosenPersonId) {
+      setExtractError('Select a profile from the list, or uncheck “Choose which profile…”');
+      return;
+    }
+    setExtractError('');
+    setSaving(true);
+    try {
+      const fields: Record<string, any> = {};
+      const docTypeHint =
+        acceptedFields?.document_type?.value ||
+        acceptedFields?.document_type ||
+        null;
+      for (const [k, v] of Object.entries(acceptedFields)) {
+        if (k === 'document_type' || k === 'needs_type') continue;
+        const base = v && typeof v === 'object' ? { ...v } : { value: v };
+        fields[k] = {
+          ...base,
+          source: 'document_corrected',
+          // Keep type for doc-card organisation (otherwise everything looks empty / "manual")
+          documentType: base.documentType || docTypeHint || undefined,
+        };
+      }
+      const extractedName = fields?.name?.value || fields?.account_holder_name?.value || '';
+      // Explicit picker wins — save exactly onto that profile (no name-mismatch redirect).
+      const forceId = target?.chooseProfile ? target.chosenPersonId! : selectedPerson;
+      const r = await api.patch(`/customers/persons/${forceId}`, {
+        fields,
+        phone,
+        name: extractedName,
+        // When operator picked a profile, do not auto-create/redirect away from it.
+        createIfMissing: !target?.chooseProfile,
+      }, { skipErrorToast: true } as any);
+      setExtractedSuggestions(null); setExtractDocId(null);
+      const savedId = r.data?.id || forceId;
+      if (savedId !== selectedPerson) {
+        setSelectedPerson(savedId);
+        await loadHousehold();
+        await loadPerson(savedId);
+        toast.success(
+          target?.chooseProfile
+            ? `Saved to ${target.chosenLabel || 'selected profile'}`
+            : r.data?.created
+              ? `Created profile for ${r.data?.name || extractedName} (name did not match open person)`
+              : `Saved to ${r.data?.name || 'matching person'} instead of open profile`,
+        );
+      } else {
+        await loadPerson(selectedPerson);
+        if (target?.chooseProfile) toast.success(`Saved to ${target.chosenLabel || 'selected profile'}`);
+      }
+      loadReadiness();
+    } catch (e: any) { setExtractError(e.response?.data?.error || e.message || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  // Compute after hooks only — never useMemo after conditional returns (blank-page crash).
+  let visibleSections: ReturnType<typeof buildVisibleSections> = [];
+  let flat: Record<string, string> = {};
+  let completeness = { filled: 0, total: 0, percent: 0, missing: [] as string[] };
+  try {
+    flat = personDetail ? flattenProfileData(personDetail.data || {}) : {};
+    completeness = getCompleteness(flat);
+    visibleSections = personDetail ? buildVisibleSections(personDetail.data || {}) : [];
+  } catch (e) {
+    console.error('[CustomerDetail] section build failed', e);
+  }
+
+  if (loading && !household) return (
+    <div className="max-w-3xl mx-auto pt-3 pb-10 px-1 sm:px-0 space-y-4 animate-pulse" aria-busy="true">
+      <div className="h-5 w-24 rounded" style={{ background: 'hsl(var(--pt-secondary) / 0.6)' }} />
+      <div className="h-28 rounded-2xl" style={{ background: 'hsl(var(--pt-secondary) / 0.6)' }} />
+      <div className="h-40 rounded-2xl" style={{ background: 'hsl(var(--pt-secondary) / 0.6)' }} />
+    </div>
+  );
+
+  if (notFound || !household) return (
+    <div className="max-w-3xl mx-auto pt-3 pb-10 px-1 sm:px-0">
+      <button onClick={() => navigate('/app/customers')} className="btn-ghost flex items-center gap-1.5 mb-3 px-0 text-sm">
+        <ArrowLeft size={16} /> Customers
+      </button>
+      <div className="rounded-2xl p-6 text-center" style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-paper)' }}>
+        <p className="text-[15px] font-medium mb-1" style={{ color: 'hsl(var(--ink))' }}>Customer not found</p>
+        <p className="text-[13px] mb-4" style={{ color: 'hsl(var(--pt-muted))' }}>
+          No household matches <span className="font-mono">{phone}</span>.
+          It may use a different phone format, or the profile was never created.
+        </p>
+        {error && <p className="text-xs mb-3" style={{ color: 'hsl(var(--chaos))' }}>{error}</p>}
+        <button onClick={() => navigate('/app/customers')} className="btn-primary text-xs">Back to Customers</button>
+      </div>
+    </div>
+  );
+
+  // Header must follow the selected tab — not always persons[0] (was confusing/wrong person).
+  const selectedMeta = household.persons.find((p) => p.id === selectedPerson) || household.persons[0];
+  const primaryName = selectedMeta?.displayLabel || selectedMeta?.name || phone;
+
+  return (
+    <div className="max-w-3xl mx-auto pt-3 pb-10 px-1 sm:px-0">
+      <button onClick={() => navigate('/app/customers')} className="btn-ghost flex items-center gap-1.5 mb-3 px-0 text-sm" style={reveal(0)}>
+        <ArrowLeft size={16} /> Customers
+      </button>
+
+      {/* Hero — one paper card: identity + completeness + primary actions */}
+      <div
+        className="rounded-2xl p-4 sm:p-5 mb-5"
+        style={{
+          background: 'hsl(var(--pt-card))',
+          border: '1px solid hsl(var(--pt-border))',
+          boxShadow: 'var(--shadow-paper)',
+          ...reveal(1),
+        }}
+      >
+        <div className="flex items-start gap-3.5 sm:gap-4 min-w-0">
+          <div
+            className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-xl sm:text-2xl font-semibold shrink-0"
+            style={{
+              background: 'hsl(var(--marigold) / 0.16)',
+              color: 'hsl(var(--marigold-deep))',
+              boxShadow: 'inset 0 0 0 1px hsl(var(--marigold) / 0.22)',
+            }}
+          >
+            {(primaryName[0] || '?').toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="pt-display text-[1.35rem] sm:text-2xl font-bold tracking-tight leading-tight truncate" style={{ color: 'hsl(var(--ink))' }}>
+              {primaryName}
+            </h1>
+            <p className="text-[13px] mt-1 truncate" style={{ color: 'hsl(var(--pt-muted))' }}>
+              {formatPhoneDisplay(phone)}
+              {household.persons.length > 1 && ` · ${household.persons.length} people`}
+            </p>
+            {personDetail && (
+              <div className="mt-3 flex items-center gap-2.5">
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden max-w-[10rem]" style={{ background: 'hsl(var(--pt-secondary))' }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${completeness.percent}%`,
+                      background: completeness.percent >= 80
+                        ? 'hsl(var(--confidence))'
+                        : completeness.percent >= 40
+                          ? 'hsl(var(--marigold))'
+                          : 'hsl(var(--chaos))',
+                      transitionTimingFunction: EASE,
+                      transitionDuration: '500ms',
+                    }}
+                  />
+                </div>
+                <span className="text-[11px] font-semibold tabular-nums shrink-0" style={{ color: 'hsl(var(--pt-muted))' }}>
+                  {completeness.percent}% profile
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => navigate(`/app/whatsapp?phone=${encodeURIComponent(phone)}`)}
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-opacity hover:opacity-90"
+            style={{ color: '#fff', background: 'hsl(var(--whatsapp))' }}
+            title="Open Documents chat"
+          >
+            <ChatCircle size={16} weight="fill" /> Documents
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/app/files?phone=${encodeURIComponent(phone)}`)}
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-opacity hover:opacity-90"
+            style={{ color: 'hsl(var(--ink))', background: 'hsl(var(--pt-secondary))', border: '1px solid hsl(var(--pt-border))' }}
+            title="Open File Manager folder"
+          >
+            <FolderOpen size={16} weight="fill" /> Files
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setShowShareModal(true)}
+            disabled={!selectedPerson}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-opacity disabled:opacity-40 hover:opacity-80"
+            style={{ color: 'hsl(var(--marigold-deep))', background: 'hsl(var(--marigold) / 0.12)' }}
+            title="Share profile"
+            aria-label="Share profile"
+          >
+            <ShareNetwork size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-opacity hover:opacity-80"
+            style={{ color: 'hsl(var(--confidence))', background: 'hsl(var(--pt-secondary))' }}
+            title="Import shared profile"
+            aria-label="Import shared profile"
+          >
+            <Export size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* People tabs — horizontal scroll on phone */}
+      {household.persons.length > 1 && (
+        <div className="mb-5 -mx-1 px-1" style={reveal(2)}>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {household.persons.map(p => {
+              const active = selectedPerson === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    if (p.id === selectedPerson) return;
+                    setPersonDetail(null);
+                    setSelectedPerson(p.id);
+                    setSearchParams({ person: p.id }, { replace: true });
+                  }}
+                  className="group flex items-center gap-1.5 pl-3.5 pr-2 py-2 rounded-full text-[13px] font-medium transition-all active:scale-[0.97] shrink-0"
+                  style={{
+                    background: active ? 'hsl(var(--marigold) / 0.16)' : 'hsl(var(--pt-card))',
+                    color: active ? 'hsl(var(--marigold-deep))' : 'hsl(var(--pt-muted))',
+                    border: active ? '1px solid hsl(var(--marigold) / 0.35)' : '1px solid hsl(var(--pt-border))',
+                    transitionTimingFunction: EASE, transitionDuration: '200ms',
+                  }}
+                  aria-pressed={active}
+                >
+                  <span className="whitespace-nowrap">{p.displayLabel || p.name}</span>
+                  <span className="text-[10px] opacity-60 capitalize whitespace-nowrap">{p.relationship}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); deletePerson(p.id, p.displayLabel || p.name); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); deletePerson(p.id, p.displayLabel || p.name); } }}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-500/15 hover:text-red-500 transition-all ${active ? 'opacity-80' : 'opacity-40 md:opacity-0 md:group-hover:opacity-100'}`}
+                    aria-label={`Remove ${p.displayLabel || p.name}`}
+                    title="Remove person"
+                  >
+                    <X size={12} />
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setShowAddPerson(true)}
+              className="flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] transition-colors shrink-0"
+              style={{ color: 'hsl(var(--pt-muted))', background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))' }}
+            >
+              <UserPlus size={14} /> Add
+            </button>
+          </div>
+        </div>
+      )}
+      {household.persons.length <= 1 && (
+        <div className="mb-5" style={reveal(2)}>
+          <button
+            type="button"
+            onClick={() => setShowAddPerson(true)}
+            className="flex items-center gap-1.5 text-[13px] transition-opacity hover:opacity-80"
+            style={{ color: 'hsl(var(--pt-muted))' }}
+          >
+            <UserPlus size={15} /> Add family member
+          </button>
+        </div>
+      )}
+      {showAddPerson && <div className="mb-5" style={reveal(2)}><AddPersonForm onSubmit={addPerson} onCancel={() => setShowAddPerson(false)} /></div>}
+
+      {personDetail && (
+        <>
+          {/* Form readiness */}
+          <section
+            className="rounded-2xl p-4 sm:p-5 mb-5"
+            style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-paper)', ...reveal(3) }}
+          >
+            <div className="flex items-center justify-between mb-3.5">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'hsl(var(--pt-muted))' }}>Form readiness</h2>
+              <span className="text-[11px] tabular-nums" style={{ color: 'hsl(var(--pt-muted))' }}>{completeness.filled}/{completeness.total} core</span>
+            </div>
+            {readiness.length === 0 ? (
+              <p className="text-[13px]" style={{ color: 'hsl(var(--pt-muted))' }}>No form data yet. Open Find Form to see requirements.</p>
+            ) : (
+              <div className="space-y-3.5">
+                {readiness.slice(0, 5).map((f: any) => {
+                  const color = f.percent >= 80
+                    ? 'hsl(var(--confidence))'
+                    : f.percent >= 50
+                      ? 'hsl(var(--saffron))'
+                      : 'hsl(var(--chaos))';
+                  return (
+                    <div key={f.id} className="flex items-center gap-3">
+                      <div className="w-[7.5rem] shrink-0 min-w-0">
+                        <p className="text-[13px] font-medium truncate" style={{ color: 'hsl(var(--ink))' }}>{f.short_name}</p>
+                        {f.missing.length > 0 && f.percent < 100 && (
+                          <p className="text-[10px] truncate mt-0.5" style={{ color: 'hsl(var(--pt-muted))' }}>
+                            need {f.missing[0].replace(/_/g, ' ')}{f.missing.length > 1 ? ` +${f.missing.length - 1}` : ''}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--pt-secondary))' }}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${f.percent}%`, background: color, transitionTimingFunction: EASE, transitionDuration: '600ms' }}
+                        />
+                      </div>
+                      <span className="text-[13px] font-semibold tabular-nums w-10 text-right" style={{ color }}>{f.percent}%</span>
+                      {f.percent === 100
+                        ? <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold shrink-0 w-12 text-right hover:underline" style={{ color: 'hsl(var(--confidence))' }}>Fill →</a>
+                        : <span className="w-12 shrink-0" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Classic sections: Personal / Identity / Contact / Education / Bank / Travel */}
+          <section className="mb-5" style={reveal(4)}>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] mb-3 px-1" style={{ color: 'hsl(var(--pt-muted))' }}>Profile data</h2>
+            <div className="space-y-3">
+              {visibleSections.map((section) => {
+                const raw = personDetail.data || {};
+                const sflat = flattenProfileData(raw);
+                const rows = section.dynamic
+                  ? section.fields.filter((f) => !!sflat[f.key])
+                  : section.fields.filter((f) => !!sflat[f.key] || f.required).concat(
+                      section.extraKeys
+                        .filter((k) => !!sflat[k] && !section.fields.some((f) => f.key === k))
+                        .map((k) => ({
+                          key: k,
+                          label: k.replace(/_(10th|12th|grad)$/, '').replace(/_/g, ' '),
+                        })),
+                    );
+                if (!rows.length) return null;
+                return (
+                  <div
+                    key={section.id}
+                    className="rounded-2xl overflow-hidden"
+                    style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-paper)' }}
+                  >
+                    <div
+                      className="px-4 py-3"
+                      style={{ borderBottom: '1px solid hsl(var(--pt-border-soft, var(--pt-border)))', background: 'hsl(var(--pt-secondary) / 0.35)' }}
+                    >
+                      <p className="text-[13px] font-semibold" style={{ color: 'hsl(var(--ink))' }}>
+                        {section.title}
+                      </p>
+                    </div>
+                    <div className="divide-y divide-[hsl(var(--pt-border-soft))]">
+                      {rows.map((f) => {
+                        const val = sflat[f.key];
+                        const rawVal = raw[f.key];
+                        const fromDoc = rawVal && typeof rawVal === 'object' && (rawVal.documentId || rawVal.source === 'document' || rawVal.source === 'ai');
+                        const needsReview = rawVal && typeof rawVal === 'object' && rawVal.needsReview;
+                        const isEditing = editingField === f.key;
+                        const display = val ? (typeof val === 'string' ? val : String(val)) : '';
+                        return (
+                          <div key={f.key} className="px-4 py-3 sm:grid sm:grid-cols-[9rem_1fr] sm:gap-4 sm:items-start">
+                            <span
+                              className="block text-[11px] font-medium mb-1 sm:mb-0 sm:pt-0.5"
+                              style={{ color: val ? 'hsl(var(--pt-muted))' : 'hsl(var(--chaos) / 0.75)' }}
+                            >
+                              {f.label}{f.required && !val ? ' *' : ''}
+                            </span>
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={() => { if (editValue !== (val || '')) saveField(f.key, editValue); else setEditingField(null); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveField(f.key, editValue); if (e.key === 'Escape') setEditingField(null); }}
+                                className="text-[15px] rounded-lg px-2.5 py-1.5 outline-none w-full"
+                                style={{
+                                  background: 'hsl(var(--marigold) / 0.1)',
+                                  border: '1px solid hsl(var(--marigold) / 0.4)',
+                                  color: 'hsl(var(--ink))',
+                                }}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingField(f.key); setEditValue(val || ''); }}
+                                className="w-full flex items-start gap-2 group text-left min-w-0"
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span
+                                    className="block text-[15px] leading-snug break-words"
+                                    style={{ color: display ? 'hsl(var(--ink))' : 'hsl(var(--pt-muted))' }}
+                                    title={display || undefined}
+                                  >
+                                    {display || '—'}
+                                  </span>
+                                  {needsReview && (
+                                    <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ color: 'hsl(35 92% 38%)', background: 'hsl(35 92% 48% / 0.12)' }}>
+                                      Needs review
+                                    </span>
+                                  )}
+                                </span>
+                                {fromDoc && !needsReview && (
+                                  <span className="shrink-0 mt-1 opacity-50" title="From document" style={{ color: 'hsl(var(--marigold-deep))' }}>
+                                    <Sparkle size={12} weight="fill" />
+                                  </span>
+                                )}
+                                <PencilSimple size={13} className="shrink-0 mt-1 opacity-40 md:opacity-0 md:group-hover:opacity-50 transition-opacity" style={{ color: 'hsl(var(--pt-muted))' }} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {addingInSection === section.id ? (
+                      <div className="flex flex-col sm:flex-row gap-2 p-4" style={{ borderTop: '1px solid hsl(var(--pt-border))' }}>
+                        <input placeholder="Field name" value={newFieldKey} onChange={(e) => setNewFieldKey(e.target.value)} className="input-field text-sm py-2 flex-1" />
+                        <input placeholder="Value" value={newFieldValue} onChange={(e) => setNewFieldValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddField(); }} className="input-field text-sm py-2 flex-1" />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={handleAddField} className="text-sm font-semibold px-3 py-2" style={{ color: 'hsl(var(--confidence))' }}>Save</button>
+                          <button type="button" onClick={() => { setAddingInSection(null); setNewFieldKey(''); setNewFieldValue(''); }} className="text-sm px-2" style={{ color: 'hsl(var(--pt-muted))' }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setAddingInSection(section.id)}
+                        className="w-full text-left text-[13px] px-4 py-3 flex items-center gap-1.5 transition-opacity hover:opacity-80"
+                        style={{ color: 'hsl(var(--marigold-deep))', borderTop: '1px solid hsl(var(--pt-border-soft, var(--pt-border)))' }}
+                      >
+                        <Plus size={14} /> Add field
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {visibleSections.length === 0 && (
+                <div
+                  className="rounded-2xl p-6 text-center"
+                  style={{ background: 'hsl(var(--pt-card))', border: '1px dashed hsl(var(--pt-border))' }}
+                >
+                  <p className="text-[14px]" style={{ color: 'hsl(var(--pt-muted))' }}>No profile details yet</p>
+                  <p className="text-[12px] mt-1" style={{ color: 'hsl(var(--pt-muted))' }}>Extract from Documents to fill this profile.</p>
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* Documents */}
+      <section className="mb-6" style={reveal(5)}>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'hsl(var(--pt-muted))' }}>
+            Documents{documents.length > 0 ? ` · ${documents.length}` : ''}
+          </h2>
+          <label
+            className={`flex items-center gap-1.5 text-[12px] font-semibold cursor-pointer transition-opacity hover:opacity-80 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+            style={{ color: 'hsl(var(--marigold-deep))' }}
+          >
+            <UploadSimple size={14} weight="bold" /> {uploading ? 'Uploading…' : 'Upload'}
+            <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUpload} disabled={uploading} />
+          </label>
+        </div>
+        {documents.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {documents.slice(0, 12).map(d => {
+              const ext = d.fileName?.split('.').pop()?.toLowerCase() || '';
+              const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+              const isPdf = ext === 'pdf';
+              const driveId = d.fileUrl?.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];
+              const thumb = isImg
+                ? (d.fileUrl?.replace('sz=w200', 'sz=w400'))
+                : isPdf && driveId
+                  ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`
+                  : null;
+              return (
+                <div
+                  key={d.id}
+                  className="rounded-2xl overflow-hidden"
+                  style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-paper)' }}
+                >
+                  <div className="aspect-[4/3] flex items-center justify-center overflow-hidden" style={{ background: 'hsl(var(--pt-secondary))' }}>
+                    {thumb
+                      ? <DocThumb src={thumb} isPdf={isPdf} />
+                      : <FileText size={32} style={{ color: 'hsl(var(--pt-muted))' }} />}
+                  </div>
+                  <div className="p-3">
+                    <p className="text-[11px] truncate mb-2" style={{ color: 'hsl(var(--pt-muted))' }}>
+                      {ext.toUpperCase()} · {new Date(d.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleExtract(d)}
+                      disabled={extracting === d.id || !selectedPerson}
+                      className="flex items-center gap-1 text-[12px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+                      style={{ color: 'hsl(var(--marigold-deep))' }}
+                    >
+                      <Sparkle size={12} weight="fill" /> {extracting === d.id ? 'Extracting…' : 'Extract data'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            className="rounded-2xl border border-dashed p-8 flex flex-col items-center gap-2 text-[13px]"
+            style={{ borderColor: 'hsl(var(--pt-border))', background: 'hsl(var(--pt-card))', color: 'hsl(var(--pt-muted))' }}
+          >
+            <UploadSimple size={28} style={{ color: 'hsl(var(--pt-muted))', opacity: 0.55 }} />
+            <p>No documents yet</p>
+            <p className="text-[12px] text-center">Upload a hardcopy scan or receive files on WhatsApp.</p>
+          </div>
+        )}
+      </section>
+
+      {/* Extraction confirm */}
+      {extractedSuggestions && (
+        <ExtractionConfirm
+          suggestions={extractedSuggestions}
+          phone={phone}
+          error={extractError}
+          saving={saving}
+          onCancel={() => { setExtractedSuggestions(null); setExtractDocId(null); setExtractError(''); }}
+          onConfirm={confirmExtraction}
+        />
+      )}
+
+      {/* Share modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => { setShowShareModal(false); setShareToken(null); setShareEmail(''); setSharePhone(''); setCopiedCode(false); setCopiedLink(false); }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl p-5"
+            style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-lift)' }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <ShareNetwork size={16} style={{ color: 'hsl(var(--pt-marigold-deep))' }} />
+              <h3 className="pt-display text-sm font-bold" style={{ color: 'hsl(var(--pt-ink))' }}>Share Profile</h3>
+            </div>
+
+            {!shareToken ? (
+              <>
+                <p className="text-xs pt-muted mb-4">Share this profile with another cybercafe. Optionally restrict to a specific recipient.</p>
+                <div className="space-y-3 mb-4">
+                  <div>
+                    <label className="text-[11px] pt-muted block mb-1">Recipient email (optional)</label>
+                    <input value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="cafe@example.com" className="input-field text-xs w-full" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] pt-muted block mb-1">Recipient phone (optional)</label>
+                    <input value={sharePhone} onChange={e => setSharePhone(e.target.value)} placeholder="9876543210" className="input-field text-xs w-full" />
+                  </div>
+                </div>
+                <button onClick={handleShare} className="btn-primary text-xs w-full">Generate Share Link</button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs pt-muted mb-3">Share this code or link with the recipient. Valid for 7 days.</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] pt-muted block mb-1">Share Code</label>
+                    <div className="flex items-center gap-2">
+                      <input readOnly value={shareToken} className="input-field text-xs font-mono flex-1" onClick={e => (e.target as HTMLInputElement).select()} />
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(shareToken); setCopiedCode(true); }}
+                        disabled={copiedCode}
+                        className="p-2 rounded-lg transition-all"
+                        style={copiedCode
+                          ? { background: 'hsl(var(--confidence) / 0.1)', color: 'hsl(var(--confidence))' }
+                          : { background: 'hsl(var(--pt-secondary))', color: 'hsl(var(--pt-muted))' }}
+                      >
+                        {copiedCode ? <Check size={15} weight="bold" /> : <CopySimple size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] pt-muted block mb-1">Public Link</label>
+                    <div className="flex items-center gap-2">
+                      <input readOnly value={`${window.location.origin}/shared/${shareToken}`} className="input-field text-xs font-mono flex-1" onClick={e => (e.target as HTMLInputElement).select()} />
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/shared/${shareToken}`); setCopiedLink(true); }}
+                        disabled={copiedLink}
+                        className="p-2 rounded-lg transition-all"
+                        style={copiedLink
+                          ? { background: 'hsl(var(--confidence) / 0.1)', color: 'hsl(var(--confidence))' }
+                          : { background: 'hsl(var(--pt-secondary))', color: 'hsl(var(--pt-muted))' }}
+                      >
+                        {copiedLink ? <Check size={15} weight="bold" /> : <CopySimple size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+            <button onClick={() => { setShowShareModal(false); setShareToken(null); setShareEmail(''); setSharePhone(''); setCopiedCode(false); setCopiedLink(false); }} className="mt-4 text-xs pt-muted transition-opacity hover:opacity-80">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Import modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => { setShowImport(false); setImportMsg(''); }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl p-5"
+            style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-lift)' }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Export size={16} style={{ color: 'hsl(var(--confidence))' }} />
+              <h3 className="pt-display text-sm font-bold" style={{ color: 'hsl(var(--pt-ink))' }}>Import Shared Profile</h3>
+            </div>
+            <p className="text-xs pt-muted mb-3">Paste the share code from another cybercafe.</p>
+            <div className="flex items-center gap-2">
+              <input value={importToken} onChange={e => setImportToken(e.target.value)} placeholder="Paste share code" className="input-field text-xs font-mono flex-1" />
+              <button onClick={handleImport} disabled={!importToken.trim()} className="btn-primary text-xs shrink-0 disabled:opacity-50">Import</button>
+            </div>
+            {importMsg && (
+              <p className="text-xs mt-3" style={{ color: importMsg.startsWith('✓') ? 'hsl(var(--confidence))' : 'hsl(var(--chaos))' }}>
+                {importMsg}
+              </p>
+            )}
+            <button onClick={() => { setShowImport(false); setImportMsg(''); }} className="mt-3 text-xs pt-muted transition-opacity hover:opacity-80">Close</button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div
+          className="rounded-xl p-3 mt-4 text-sm"
+          style={{ background: 'hsl(var(--chaos) / 0.1)', border: '1px solid hsl(var(--chaos) / 0.25)', color: 'hsl(var(--chaos))' }}
+        >
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddPersonForm({ onSubmit, onCancel }: { onSubmit: (f: any) => void; onCancel: () => void }) {
+  const [name, setName] = useState('');
+  const [relationship, setRelationship] = useState('self');
+  return (
+    <div
+      className="rounded-2xl p-4 flex flex-col sm:flex-row gap-3 sm:items-end"
+      style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-paper)' }}
+    >
+      <div className="flex-1 min-w-0">
+        <label className="text-[11px] font-medium mb-1 block" style={{ color: 'hsl(var(--pt-muted))' }}>Name</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Family member name" className="input-field" />
+      </div>
+      <div className="sm:w-36">
+        <label className="text-[11px] font-medium mb-1 block" style={{ color: 'hsl(var(--pt-muted))' }}>Relationship</label>
+        <select value={relationship} onChange={e => setRelationship(e.target.value)} className="input-field">
+          {RELATIONSHIPS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => onSubmit({ name, relationship })} disabled={!name} className="btn-primary flex-1 sm:flex-none">Add</button>
+        <button type="button" onClick={onCancel} className="btn-ghost">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function ExtractionConfirm({
+  suggestions,
+  phone,
+  onCancel,
+  onConfirm,
+  error,
+  saving,
+}: {
+  suggestions: Record<string, any>;
+  phone?: string;
+  onCancel: () => void;
+  onConfirm: (fields: Record<string, any>, target?: ExtractSaveTarget) => void;
+  error?: string;
+  saving?: boolean;
+}) {
+  const [accepted, setAccepted] = useState<Record<string, any>>({ ...suggestions });
+  const [target, setTarget] = useState<ExtractSaveTarget>({
+    chooseProfile: false,
+    chosenPersonId: null,
+    chosenLabel: null,
+  });
+  const toggle = (key: string) => setAccepted((prev: any) => {
+    const next = { ...prev };
+    if (next[key]) delete next[key]; else next[key] = suggestions[key];
+    return next;
+  });
+  const updateValue = (key: string, value: string) => setAccepted((prev: any) => ({ ...prev, [key]: { ...prev[key], value, source: 'document_corrected' } }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onCancel}>
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl max-h-[85vh] flex flex-col overflow-hidden"
+        style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))', boxShadow: 'var(--shadow-lift)' }}
+      >
+        <div className="p-5 flex flex-col min-h-0">
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkle size={18} weight="fill" style={{ color: 'hsl(var(--pt-marigold))' }} />
+            <p className="pt-display text-base font-bold" style={{ color: 'hsl(var(--pt-ink))' }}>Review extracted data</p>
+          </div>
+          <p className="text-xs pt-muted mb-3">Uncheck to skip. Edit values inline. Confirm to save.</p>
+          <ExtractProfileTarget
+            value={target}
+            onChange={setTarget}
+            phone={phone}
+            hint="Only family members on this phone — pick who these details belong to (e.g. bank passbook with no name)."
+          />
+          <div className="space-y-2 mb-4 overflow-y-auto flex-1">
+            {Object.entries(suggestions).map(([k, v]: [string, any]) => (
+              <label key={k} className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={!!accepted[k]} onChange={() => toggle(k)}
+                  className="w-4 h-4 rounded accent-[hsl(var(--pt-marigold))]" />
+                <span className="text-xs pt-muted w-28 capitalize shrink-0">{k.replace(/_/g, ' ')}</span>
+                <input value={accepted[k]?.value || v.value || ''} onChange={e => updateValue(k, e.target.value)} disabled={!accepted[k]}
+                  className="input-field text-xs py-1.5 flex-1 disabled:opacity-40" />
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onConfirm(accepted, target)}
+              disabled={saving || (target.chooseProfile && !target.chosenPersonId)}
+              className="btn-primary flex items-center gap-2 flex-1 justify-center disabled:opacity-50"
+            >
+              <CheckCircle size={16} weight="fill" /> {saving ? 'Saving…' : 'Confirm & Save'}
+            </button>
+            <button onClick={onCancel} disabled={saving} className="btn-secondary disabled:opacity-50">Cancel</button>
+          </div>
+          {error && <p className="text-xs mt-3" style={{ color: 'hsl(var(--chaos))' }}>{error}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}

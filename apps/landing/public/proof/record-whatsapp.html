@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WhatsApp proof · product demo</title>
+  <link rel="stylesheet" href="./demo-tokens.css" />
+  <style>
+    .main { padding: 0; display: grid; grid-template-columns: 1.05fr .95fr; height: 720px; }
+    .pane { border-right: 1px solid hsl(var(--pt-border)); display: flex; flex-direction: column; min-width: 0; }
+    .pane:last-child { border-right: 0; }
+    .pane-head {
+      height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+      border-bottom: 1px solid hsl(var(--pt-border)); background: hsl(var(--pt-card));
+      font: 600 13px Inter, sans-serif;
+    }
+    .wa-body { flex: 1; padding: 14px; background: #0b141a; color: #fff; overflow: hidden; }
+    .bubble { max-width: 88%; margin: 8px 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; opacity: 0; transform: translateY(6px); transition: .35s; }
+    .bubble.show { opacity: 1; transform: none; }
+    .me { margin-left: auto; background: #005c4b; }
+    .them { background: #1f2c34; }
+    .file { height: 48px; display: grid; place-items: center; background: rgba(255,255,255,.08); border-radius: 8px; margin-bottom: 4px; font-size: 12px; }
+    .desk { flex: 1; padding: 14px; background: hsl(var(--paper)); }
+    .item {
+      display: flex; gap: 10px; align-items: center; border: 1px solid hsl(var(--pt-border));
+      border-radius: 12px; padding: 10px 12px; margin: 8px 0; background: hsl(var(--pt-card));
+      box-shadow: var(--shadow-paper); opacity: 0; transform: translateY(8px); transition: .4s;
+    }
+    .item.show { opacity: 1; transform: none; }
+    .badge { margin-left: auto; background: #d1fae5; color: #047857; font: 600 11px Inter; padding: 3px 8px; border-radius: 999px; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hub">
+      <aside class="sidebar">
+        <div class="sidebar-brand"><div class="mark">⚡</div><div class="name pt-display">Cyber<em>Control</em></div></div>
+        <nav>
+          <div class="nav-item"><span class="ic">⚡</span> Today</div>
+          <div class="nav-item"><span class="ic">👤</span> Customers</div>
+          <div class="nav-item"><span class="ic">🔎</span> Find Form</div>
+          <div class="nav-item"><span class="ic">📁</span> File Manager</div>
+          <div class="nav-item active"><span class="ic">💬</span> Documents</div>
+          <div class="nav-item"><span class="ic">📷</span> Photos</div>
+          <div class="nav-item"><span class="ic">⚙</span> Settings</div>
+        </nav>
+        <div class="sidebar-foot">Demo cafe · fictional data</div>
+      </aside>
+      <main class="main">
+        <section class="pane">
+          <div class="pane-head">WhatsApp · Demo Customer <span class="badge-demo">Demo · fictional data</span></div>
+          <div class="wa-body">
+            <div class="bubble me" id="b1">bhaiya aadhaar bhej raha hu (demo)</div>
+            <div class="bubble them" id="b2"><div class="file">📄 aadhaar_demo_front.jpg</div><div style="opacity:.5;font-size:11px">today 10:42</div></div>
+            <div class="bubble them" id="b3"><div class="file">📄 marksheet_demo.pdf</div></div>
+          </div>
+        </section>
+        <section class="pane">
+          <div class="pane-head">Saved to Ananya Demo</div>
+          <div class="desk">
+            <div class="item" id="i1"><span>📄</span><span style="flex:1;font:600 13px Inter">aadhaar_demo_front.jpg</span><span class="badge">saved</span></div>
+            <div class="item" id="i2"><span>📄</span><span style="flex:1;font:600 13px Inter">marksheet_demo.pdf</span><span class="badge">saved</span></div>
+            <div class="item" id="i3"><span>📄</span><span style="flex:1;font:600 13px Inter">signature_demo.png</span><span class="badge">saved</span></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="./demo-fx.js"></script>
+  <script>
+    async function runOnce() {
+      const fx = window.DemoFx;
+      for (const id of ['b1','b2','b3','i1','i2','i3']) document.getElementById(id).classList.remove('show');
+      await fx.sleep(400);
+      for (const id of ['b1','b2','b3']) { document.getElementById(id).classList.add('show'); await fx.sleep(450); }
+      await fx.moveTo(document.getElementById('b2'), 600);
+      await fx.click(document.getElementById('b2'));
+      await fx.sleep(300);
+      for (const id of ['i1','i2','i3']) { document.getElementById(id).classList.add('show'); await fx.sleep(320); }
+      await fx.moveTo(document.getElementById('i1'), 500);
+      await fx.highlight(document.getElementById('i1'), 280);
+      await fx.sleep(900);
+      window.__done = true;
+    }
+    if (window.DemoFx) { window.__ready = true; runOnce().catch(() => { window.__done = true; }); }
+  </script>
+</body>
+</html>

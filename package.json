@@ -1,0 +1,23 @@
+{
+  "name": "cybercontrol-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Operator web app (cafe UI), landing site, and the in-app file viewer/print tools.",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "check:readmes": "node tooling/check-readmes.mjs origin/main"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "ts-migrate": "^0.1.35",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.12.1"
+}

@@ -1,0 +1,194 @@
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useAuthStore } from './features/auth/store';
+import { extensionBridge } from './shared/extensionBridge';
+import Toasts from './shared/Toasts';
+import { API_URL } from './shared/api';
+import api from './shared/api';
+import { toast } from './shared/toast';
+import { getCachedBlob, printBlob } from './shared/fileCache';
+import PageHeader from './shared/PageHeader';
+import { useReveal } from './shared/useReveal';
+import { useIsNarrow } from './shared/useIsNarrow';
+import DrivePicker from './features/photo-tool/DrivePicker';
+import { configureMediaTools } from '@cybercontrol/media-tools/hub';
+import Login from './features/auth/Login';
+import Layout from './shared/Layout';
+
+configureMediaTools({
+  api,
+  toast,
+  printBlob,
+  getCachedBlob,
+  PageHeader,
+  useReveal,
+  useIsNarrow,
+  DrivePicker,
+});
+
+// Lazy-loaded routes — each becomes a separate chunk
+const Dashboard = lazy(() => import('./features/dashboard/Dashboard'));
+const Customers = lazy(() => import('./features/customers/Customers'));
+const CustomerDetail = lazy(() => import('./features/customers/CustomerDetail'));
+const Jobs = lazy(() => import('./features/jobs/Jobs'));
+const NewJob = lazy(() => import('./features/jobs/NewJob'));
+const JobDetail = lazy(() => import('./features/jobs/JobDetail'));
+const WhatsApp = lazy(() => import('./features/whatsapp/WhatsApp'));
+const FormDirectory = lazy(() => import('./features/forms/FormDirectory'));
+const FileManager = lazy(() => import('./features/files/FileManager'));
+const PhotosHub = lazy(() => import('./features/photos/PhotosHub'));
+const MediaDeskHome = lazy(() => import('@cybercontrol/media-tools/MediaDeskHome'));
+const PassportEditor = lazy(() => import('@cybercontrol/media-tools/PassportEditor'));
+const PrintSheet = lazy(() => import('@cybercontrol/media-tools/PrintSheet'));
+const DocumentPrintPage = lazy(() => import('@cybercontrol/media-tools/DocumentPrintPage'));
+const PdfScan = lazy(() => import('@cybercontrol/media-tools/PdfScan'));
+const PdfToolsHome = lazy(() => import('@cybercontrol/media-tools/PdfToolsHome'));
+const PdfOrganize = lazy(() => import('@cybercontrol/media-tools/PdfOrganize'));
+const PdfMerge = lazy(() => import('@cybercontrol/media-tools/PdfMerge'));
+const PdfSplit = lazy(() => import('@cybercontrol/media-tools/PdfSplit'));
+const PdfCompress = lazy(() => import('@cybercontrol/media-tools/PdfCompress'));
+const PdfResize = lazy(() => import('@cybercontrol/media-tools/PdfResize'));
+const AadhaarLayout = lazy(() => import('@cybercontrol/media-tools/AadhaarLayout'));
+const SharedProfile = lazy(() => import('./features/customers/SharedProfile'));
+const Settings = lazy(() => import('./features/settings/Settings'));
+const Operators = lazy(() => import('./features/admin/Operators'));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-6 h-6 rounded-full animate-spin" style={{ border: '2px solid hsl(27 95% 55% / 0.25)', borderTopColor: 'hsl(27 95% 55%)' }} />
+    </div>
+  );
+}
+
+export default function App() {
+  const { accessToken, refreshToken, user, setUser, logout } = useAuthStore();
+  const authed = !!accessToken;
+  // Wait for zustand-persist so a saved session does not flash Login.
+  const [authReady, setAuthReady] = useState(() => useAuthStore.persist.hasHydrated());
+
+  useEffect(() => {
+    if (useAuthStore.persist.hasHydrated()) {
+      setAuthReady(true);
+      return;
+    }
+    const unsub = useAuthStore.persist.onFinishHydration(() => setAuthReady(true));
+    // Phone Chrome + slow storage: never leave the boot spinner forever.
+    const t = window.setTimeout(() => setAuthReady(true), 2500);
+    return () => {
+      unsub?.();
+      window.clearTimeout(t);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authed) {
+      extensionBridge.connect({ accessToken, refreshToken, user, backendUrl: API_URL }).catch(() => {});
+    } else {
+      extensionBridge.disconnect();
+    }
+    return () => { /* keep retry loop alive on route change */ };
+  }, [authed, accessToken]);
+
+  // Boot-time session validation: refresh the live user (role/status) and bounce dead/suspended
+  // sessions. A 401 is handled by the api interceptor (single-flight refresh, else logout);
+  // transient/offline errors keep the cached session so the app still opens offline.
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    api.get('/auth/me')
+      .then((r) => {
+        if (!alive) return;
+        const u = r.data;
+        if (u?.status && u.status !== 'active') { logout(); return; }
+        setUser({
+          id: u.id,
+          workspaceId: u.workspace_id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          hasPassword: !!u.has_password,
+        });
+      })
+      .catch(() => { /* interceptor handles 401; ignore transient/offline errors */ });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Shared customer profiles are accessible without login.
+  const isSharedProfile = typeof window !== 'undefined' && window.location.pathname.startsWith('/shared/');
+  if (!authReady) return <PageLoader />;
+  if (!authed && !isSharedProfile) return <Login />;
+
+  return (
+    <BrowserRouter>
+      <Toasts />
+      <Routes>
+        <Route path="/shared/:token" element={<Suspense fallback={<PageLoader />}><SharedProfile /></Suspense>} />
+        <Route element={<Layout />}>
+          <Route path="/app" element={<Suspense fallback={<PageLoader />}><Dashboard /></Suspense>} />
+          <Route path="/app/customers" element={<Suspense fallback={<PageLoader />}><Customers /></Suspense>} />
+          <Route path="/app/customers/:id" element={<Suspense fallback={<PageLoader />}><CustomerDetail /></Suspense>} />
+          <Route path="/app/jobs" element={<Suspense fallback={<PageLoader />}><Jobs /></Suspense>} />
+          <Route path="/app/jobs/new" element={<Suspense fallback={<PageLoader />}><NewJob /></Suspense>} />
+          <Route path="/app/jobs/:id" element={<Suspense fallback={<PageLoader />}><JobDetail /></Suspense>} />
+          <Route path="/app/whatsapp" element={<Suspense fallback={<PageLoader />}><WhatsApp /></Suspense>} />
+          <Route path="/app/forms" element={<Suspense fallback={<PageLoader />}><FormDirectory /></Suspense>} />
+          <Route path="/app/files" element={<Suspense fallback={<PageLoader />}><FileManager /></Suspense>} />
+          {/* Photos = Photo Editor, Print Doc, PDF Tool */}
+          <Route path="/app/photos" element={<Suspense fallback={<PageLoader />}><PhotosHub /></Suspense>}>
+            <Route index element={<Suspense fallback={<PageLoader />}><MediaDeskHome /></Suspense>} />
+            <Route path="portal" element={<Suspense fallback={<PageLoader />}><PassportEditor /></Suspense>} />
+            <Route path="editor" element={<RedirectWithSearch to="/app/photos/portal" />} />
+            <Route path="print" element={<Suspense fallback={<PageLoader />}><PrintSheet /></Suspense>} />
+            <Route path="printdoc" element={<Suspense fallback={<PageLoader />}><DocumentPrintPage /></Suspense>} />
+            <Route path="doc-print" element={<Suspense fallback={<PageLoader />}><DocumentPrintPage /></Suspense>} />
+            <Route path="scan" element={<Suspense fallback={<PageLoader />}><PdfScan /></Suspense>} />
+            <Route path="aadhaar" element={<Suspense fallback={<PageLoader />}><AadhaarLayout /></Suspense>} />
+            <Route path="pdf" element={<Suspense fallback={<PageLoader />}><PdfToolsHome /></Suspense>} />
+            <Route path="pdf/organize" element={<Suspense fallback={<PageLoader />}><PdfOrganize /></Suspense>} />
+            <Route path="pdf/merge" element={<Suspense fallback={<PageLoader />}><PdfMerge /></Suspense>} />
+            <Route path="pdf/split" element={<Suspense fallback={<PageLoader />}><PdfSplit /></Suspense>} />
+            <Route path="pdf/compress" element={<Suspense fallback={<PageLoader />}><PdfCompress /></Suspense>} />
+            <Route path="pdf/resize" element={<Suspense fallback={<PageLoader />}><PdfResize /></Suspense>} />
+          </Route>
+          {/* Back-compat redirects */}
+          <Route path="/app/photo" element={<RedirectWithSearch to="/app/photos/portal" />} />
+          <Route path="/app/photos/passport" element={<RedirectWithSearch to="/app/photos/portal" />} />
+          <Route path="/app/photos/pdf-scan" element={<RedirectWithSearch to="/app/photos/scan" />} />
+          <Route path="/app/photos/prints" element={<RedirectWithSearch to="/app/photos/print" />} />
+          <Route path="/app/photos/process" element={<RedirectWithSearch to="/app/photos/portal" />} />
+          <Route path="/app/photos/form" element={<RedirectWithSearch to="/app/photos/portal" />} />
+          <Route path="/app/stitch" element={<RedirectWithSearch to="/app/photos/aadhaar" />} />
+          <Route path="/app/forms/photo" element={<RedirectWithSearch to="/app/photos/portal" />} />
+          {/* Bookmarks / old links: Documents receive desk lives at /app/whatsapp */}
+          <Route path="/app/documents" element={<RedirectWithSearch to="/app/whatsapp" />} />
+          <Route path="/app/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
+          <Route element={<AdminOnly />}>
+            <Route path="/admin/operators" element={<Suspense fallback={<PageLoader />}><Operators /></Suspense>} />
+            {/* Learning/config moved to owner-panel — keep old bookmarks from landing on a blank admin home */}
+            <Route path="/admin" element={<Navigate to="/admin/operators" replace />} />
+            <Route path="/admin/corrections" element={<Navigate to="/admin/operators" replace />} />
+            <Route path="/admin/sessions" element={<Navigate to="/admin/operators" replace />} />
+            <Route path="/admin/mappings" element={<Navigate to="/admin/operators" replace />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/app" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+function RedirectWithSearch({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={to + search} replace />;
+}
+
+// Route guard: only admins may enter /admin/*; operators are sent to their dashboard.
+function AdminOnly() {
+  const role = useAuthStore((s) => s.user?.role);
+  if (role !== 'admin') return <Navigate to="/app" replace />;
+  return <Outlet />;
+}
+
+

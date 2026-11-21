@@ -1,0 +1,182 @@
+node_modules/
+dist/
+dist-e2e/
+build/
+.playwright-mcp/
+test-results/
+apps/frontend/.tmp-*
+# Keep Mozilla PDF.js engine (public/pdfjs/build) Ã¢â‚¬â€ required for in-app viewer
+!apps/frontend/public/pdfjs/build/
+!apps/frontend/public/pdfjs/build/**
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Runtime/auth
+.wwebjs_auth/
+.wwebjs_cache/
+uploads/
+auth_info/
+sessions/
+upload_queue/
+
+# Chromium / wwebjs browser session data (never commit Ã¢â‚¬â€ contains cookies, login data)
+apps/whatsapp-resolver/session/
+apps/whatsapp-service/session/
+
+# Binaries/artifacts
+*.zip
+*.heapsnapshot
+*.json.bak
+
+# Backend provider/asset sources are .ts only — do not re-commit emit-in-place .js
+apps/backend/providers/*.js
+apps/backend/src/assets/*.js
+
+# Emit-in-place .js twins (.ts is source of truth). Regenerate: pnpm emit:js-twins
+apps/extension/background.js
+apps/extension/content.js
+apps/extension/popup.js
+apps/extension/vendor/pdfjs/*.mjs
+apps/extension/knowledge-sync.js
+apps/extension/sw/auth-refresh.js
+apps/extension/sw/wss-bridge.js
+apps/extension/application/fill-orchestrator.js
+apps/frontend/public/sw.js
+apps/landing/public/proof/demo-fx.js
+apps/whatsapp-service/index.js
+apps/whatsapp-service/migrate-sessions-to-db.js
+apps/whatsapp-resolver/index.js
+apps/cyb-cli/bin/cyb.js
+extension-legacy-best/background.js
+extension-legacy-best/content.js
+extension-legacy-best/popup.js
+extension-legacy-best/knowledge-sync.js
+extension-legacy-best/autofill/ai-resolve.js
+extension-legacy-best/autofill/derive.js
+extension-legacy-best/autofill/executor.js
+extension-legacy-best/autofill/extractor.js
+extension-legacy-best/autofill/mapper.js
+extension-legacy-best/autofill/rule-engine.js
+extension-legacy-best/autofill/plugins/button-click.js
+extension-legacy-best/autofill/plugins/cascade-select.js
+extension-legacy-best/autofill/plugins/interface.js
+extension-legacy-best/autofill/plugins/keystroke-input.js
+extension-legacy-best/autofill/plugins/network-monitor.js
+extension-legacy-best/autofill/plugins/ng-dropdown.js
+extension-legacy-best/capabilities/registry.js
+extension-legacy-best/drivers/dispatch.js
+extension-legacy-best/drivers/dom.js
+extension-legacy-best/drivers/input.js
+extension-legacy-best/drivers/interaction.js
+extension-legacy-best/drivers/select.js
+extension-legacy-best/models/ir.js
+extension-legacy-best/runtime/plugin-bridge.js
+extension-legacy-best/runtime/resolver.js
+extension-legacy-best/runtime/runner.js
+extension-legacy-best/shared/dom-utils.js
+extension-legacy-best/shared/label-utils.js
+extension-legacy-best/shared/llm-client.js
+extension-legacy-best/shared/network-idle.js
+extension-legacy-best/shared/option-match.js
+extension-legacy-best/shared/select-apply.js
+extension-legacy-best/shared/semantic-aliases.js
+
+# Legacy/obsolete (local only)
+/whatsapp/
+gateway/
+!extension-legacy-best/runtime/gateway/
+!extension-legacy-best/runtime/gateway/**
+storage/
+inbox/
+data/
+tools/*
+!tools/forbidden-deps-check.ts
+!tools/dom-boundary-check.ts
+!tools/*.ts
+/tests/
+worker/
+
+# Old scripts/configs
+ecosystem.config.js
+ecosystem.config.cjs
+!apps/**/ecosystem.config.cjs
+!apps/**/ecosystem.config.ts
+render.yaml
+start.sh
+stop.sh
+start-windows.bat
+deploy.sh
+setup-gcp.sh
+setup-gcp2.sh
+setup-gcp*.sh
+health-check.*
+live-logs*
+smoke-test*
+recover-resolver.sh
+update-tunnel-url.sh
+package.json.bak
+package-lock.json
+!extension-dev/tests/browser/package-lock.json
+
+# Old docs (kept in docs/ if needed)
+VERCEL_GCP_GUIDE.md
+GCP.md
+GCP_PM2_OPS.md
+OPERATIONS.md
+DEPENDENCIES.md
+DATABASE.md
+APPLICATION_OVERVIEW.md
+AUTOFILLER.md
+autofill_workflow.md
+DESIGN_SYSTEM.md
+CHANGELOG.md
+
+# Platform
+.vercel
+WORKER_SECRET*
+
+# Keep the packaged extension for landing download (exception to *.zip)
+!landing/public/cybercontrol-extension.zip
+
+# Packaged extension / signing (never commit)
+*.pem
+*.crx
+extension.pem
+extension.crx
+
+# CLI debug artifacts / leaked tokens
+extension-dev/cli/out/
+*.jwt
+**/ramishwar-access.jwt
+
+# Turborepo
+.turbo/
+
+# Stale pre-monorepo root dirs (source now lives under apps/ Ã¢â‚¬â€ these are local artifacts only)
+/backend/
+/extension-service/
+/frontend/
+
+# tsc emit staging (extension-service and similar)
+.tsbuild/
+**/.tsbuild/
+
+
+# Local issue scratch
+.tmp-issue*/
+
+
+# Local WA resolver browser session (never commit)
+apps/whatsapp-resolver/session/
+
+# Synced from extension-legacy-best by extension build (PRODUCT_PATH_SCRIPTS)
+apps/extension/perception/
+apps/extension/runtime/

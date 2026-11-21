@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Files proof · product demo</title>
+  <link rel="stylesheet" href="./demo-tokens.css" />
+  <style>
+    .hub { grid-template-columns: 224px 1fr; }
+    .main { padding: 0; display: flex; flex-direction: column; height: 720px; }
+    .fm-bar {
+      height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 18px;
+      border-bottom: 1px solid hsl(var(--pt-border)); background: hsl(var(--pt-card));
+    }
+    .crumb { font-size: 13px; color: hsl(var(--pt-muted)); }
+    .crumb b { color: hsl(var(--ink)); font-weight: 600; }
+    .grid {
+      flex: 1; padding: 18px; display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 14px; align-content: start; background: hsl(var(--paper));
+    }
+    .tile {
+      background: hsl(var(--pt-card)); border: 1px solid hsl(var(--pt-border));
+      border-radius: 14px; padding: 12px; box-shadow: var(--shadow-paper);
+      opacity: 0; transform: translateY(8px); transition: .35s; cursor: pointer;
+    }
+    .tile.show { opacity: 1; transform: none; }
+    .tile.selected { border-color: hsl(var(--marigold)); box-shadow: 0 0 0 3px hsl(var(--marigold) / 0.2); }
+    .preview {
+      height: 110px; border-radius: 10px; margin-bottom: 10px;
+      background: linear-gradient(135deg, #e7e5e4, #d6d3d1);
+      display: grid; place-items: center; font-size: 28px;
+    }
+    .name { font: 700 13px Inter, sans-serif; }
+    .meta { color: hsl(var(--pt-muted)); font-size: 12px; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hub">
+      <aside class="sidebar">
+        <div class="sidebar-brand"><div class="mark">⚡</div><div class="name pt-display">Cyber<em>Control</em></div></div>
+        <nav>
+          <div class="nav-item"><span class="ic">⚡</span> Today</div>
+          <div class="nav-item"><span class="ic">👤</span> Customers</div>
+          <div class="nav-item"><span class="ic">🔎</span> Find Form</div>
+          <div class="nav-item active"><span class="ic">📁</span> File Manager</div>
+          <div class="nav-item"><span class="ic">💬</span> Documents</div>
+          <div class="nav-item"><span class="ic">📷</span> Photos</div>
+          <div class="nav-item"><span class="ic">⚙</span> Settings</div>
+        </nav>
+        <div class="sidebar-foot">Demo cafe · fictional data</div>
+      </aside>
+      <main class="main">
+        <div class="fm-bar">
+          <div class="crumb">Customers / <b>Ananya Demo</b></div>
+          <span class="badge-demo">Demo · fictional data</span>
+        </div>
+        <div class="grid">
+          <div class="tile" id="t1"><div class="preview">🪪</div><div class="name">Aadhaar</div><div class="meta">JPG · demo</div></div>
+          <div class="tile" id="t2"><div class="preview">📄</div><div class="name">Marksheet</div><div class="meta">PDF · demo</div></div>
+          <div class="tile" id="t3"><div class="preview">🖼️</div><div class="name">Photo 4.5×3.5</div><div class="meta">JPG · demo</div></div>
+          <div class="tile" id="t4"><div class="preview">✍️</div><div class="name">Signature</div><div class="meta">PNG · demo</div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="./demo-fx.js"></script>
+  <script>
+    async function runOnce() {
+      const fx = window.DemoFx;
+      const tiles = ['t1','t2','t3','t4'].map((id) => document.getElementById(id));
+      tiles.forEach((t) => t.classList.remove('show','selected'));
+      await fx.sleep(350);
+      for (const t of tiles) { t.classList.add('show'); await fx.sleep(180); }
+      await fx.moveTo(tiles[0], 650);
+      await fx.click(tiles[0]);
+      tiles[0].classList.add('selected');
+      await fx.sleep(500);
+      await fx.moveTo(tiles[2], 550);
+      await fx.click(tiles[2]);
+      tiles[0].classList.remove('selected');
+      tiles[2].classList.add('selected');
+      await fx.sleep(1100);
+      window.__done = true;
+    }
+    if (window.DemoFx) { window.__ready = true; runOnce().catch(() => { window.__done = true; }); }
+  </script>
+</body>
+</html>
