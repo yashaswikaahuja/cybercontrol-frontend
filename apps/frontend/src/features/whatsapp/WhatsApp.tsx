@@ -5,6 +5,7 @@ import api, { API_URL, SOCKET_URL } from '../../shared/api';
 import { isCardType as isCardTag } from '@cybercontrol/media-tools';
 import { DocTypePickerModal } from '../../shared/DocTypePicker';
 import { ExtractProfileTarget, type ExtractSaveTarget } from '../../shared/ExtractProfileTarget';
+import { QrNote } from '../../shared/QrNote';
 import { toast } from '../../shared/toast';
 import { getCachedBlob, prefetchDriveFile, printBlob } from '../../shared/fileCache';
 import { formatPhoneDisplay, phonesMatch } from '../../shared/phone';
@@ -1920,6 +1921,7 @@ function ExtractionConfirmModal({
       <div onClick={e => e.stopPropagation()} className="bg-[var(--card)] border border-blue-500/30 rounded-xl p-5 max-w-lg w-full max-h-[85vh] overflow-y-auto">
         <p className="text-sm font-medium text-blue-400 mb-3">Review extracted fields</p>
         <p className="text-xs text-gray-500 mb-3">Uncheck fields to skip. Edit values inline. Confirm to save with provenance.</p>
+        <QrNote suggestions={suggestions} />
         <ExtractProfileTarget
           value={target}
           onChange={setTarget}

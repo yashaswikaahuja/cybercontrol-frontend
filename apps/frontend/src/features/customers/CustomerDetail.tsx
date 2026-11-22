@@ -11,6 +11,7 @@ import { formatPhoneDisplay, phonesMatch } from '../../shared/phone';
 import { getCompleteness, flattenProfileData, buildVisibleSections } from '../../shared/profileSchema';
 import { ExtractProfileTarget, type ExtractSaveTarget } from '../../shared/ExtractProfileTarget';
 import { REVEAL_EASE as EASE, useReveal } from '../../shared/useReveal';
+import { QrNote } from '../../shared/QrNote';
 
 interface Person { id: string; name: string; displayLabel: string; relationship: string; createdAt: string; updatedAt: string; }
 interface Household { phone: string; person_count: string; persons: Person[]; }
@@ -904,6 +905,7 @@ function ExtractionConfirm({
             <p className="pt-display text-base font-bold" style={{ color: 'hsl(var(--pt-ink))' }}>Review extracted data</p>
           </div>
           <p className="text-xs pt-muted mb-3">Uncheck to skip. Edit values inline. Confirm to save.</p>
+          <QrNote suggestions={suggestions} />
           <ExtractProfileTarget
             value={target}
             onChange={setTarget}

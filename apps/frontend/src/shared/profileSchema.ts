@@ -239,6 +239,7 @@ export const PROFILE_SCHEMA: Section[] = [
       { key: 'permanent_address', label: 'Permanent Address' },
       { key: 'village', label: 'Village' },
       { key: 'block', label: 'Block' },
+      { key: 'sub_district', label: 'Sub-District / Tehsil' },
       { key: 'sub_division', label: 'Sub-Division' },
       { key: 'post_office', label: 'Post Office' },
       { key: 'police_station', label: 'Police Station' },

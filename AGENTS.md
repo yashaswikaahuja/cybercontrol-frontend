@@ -43,9 +43,15 @@ CI fails a pull request that changes a package's `src/` or `package.json` withou
 - Do not edit the generated block of a README by hand. Edit the text outside it.
 - The browser extension observes and acts. Planning, mapping, knowledge and learning live on the server.
 
+### How your changes reach production
+- This repo is a copy of part of a private repository. `main` is written only by the sync bot; do not push to it.
+- Work on a branch and open a pull request against `main`. When it is ready, add the `import` label. The sync bot copies the files you changed inside your own packages into a pull request in the private repository, where it is reviewed.
+- Do not merge your pull request here. After the private pull request is merged, the change comes back to `main` with the next sync and you can close yours.
+- Only files inside this department's packages are imported. Changes to generated files (`AGENTS.md`, the root `README.md`, `db/`, CI, root config) are ignored, so ask for those in the pull request description.
+
 ### Database
-- One PostgreSQL serves all departments. Create or alter only tables listed as yours in the Database section of this file.
-- Other departments' tables are in `db/shared-schema/` so you can run locally. Never edit those files. Write to a table you do not own only if the Database section grants you write access.
+- Each department has its own PostgreSQL database (see the Database section of this file). Create or alter only tables listed as yours.
+- Tables of other departments live in their databases. Their definitions are in `db/shared-schema/` only so you can run locally. Never edit those files, and do not expect to join across databases. Read or write another department's table only if the Database section grants that access.
 - Need data or a column from another department? Open an issue with the contract you need.
 
 ### Safety
