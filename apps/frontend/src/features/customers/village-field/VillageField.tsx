@@ -19,6 +19,7 @@ const review = { color: 'hsl(35 92% 38%)', background: 'hsl(35 92% 48% / 0.12)' 
 const place = (s: VillageSuggestion) => [
   s.kind === 'town' ? `town · PIN ${s.pincode}` : s.lgdVillage ? `hamlet of ${s.lgdVillage}` : null,
   s.subDistrict, `${s.district}, ${s.state}`,
+  s.distanceKm != null ? `~${s.distanceKm} km` : null,
 ].filter(Boolean).join(' · ');
 
 /**

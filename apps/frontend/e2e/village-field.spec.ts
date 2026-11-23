@@ -110,7 +110,7 @@ test('picking a town fills city, post office and PIN from India Post', async ({ 
     if (path.endsWith('/customers/persons/p1') && req.method() === 'GET') return json({ id: 'p1', name: 'Test Person', display_label: 'Test Person', data });
     if (path.endsWith('/customers/persons/p1')) { const b = req.postDataJSON(); patches.push(b); Object.assign(data, b.fields); return json({ ok: true, id: 'p1' }); }
     if (path.endsWith('/address/villages')) {
-      return json([{ kind: 'town', code: null, name: 'Rajgir', lgdVillage: null, subDistrict: null, block: null, district: 'Nalanda', state: 'Bihar', pincode: '803116', postOffice: 'Rajgir' }]);
+      return json([{ kind: 'town', code: null, name: 'Rajgir', lgdVillage: null, subDistrict: null, block: null, district: 'Nalanda', state: 'Bihar', pincode: '803116', postOffice: 'Rajgir', distanceKm: 40 }]);
     }
     if (path.endsWith('/address/resolve')) return json({ fields: {}, options: {} });
     return json([]);
@@ -120,6 +120,7 @@ test('picking a town fills city, post office and PIN from India Post', async ({ 
   await villageRow.getByRole('button').first().click();
   await page.getByRole('combobox', { name: 'Village' }).fill('Rajgir');
   await expect(page.getByRole('option', { name: /town .* PIN 803116/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: /~40 km/ }), 'distance from the cafe').toBeVisible();
   await page.getByRole('option').first().click();
   await page.getByRole('button', { name: 'Save village + 4 fields' }).click();
   await expect.poll(() => patches.length).toBe(1);

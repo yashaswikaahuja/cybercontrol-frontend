@@ -23,6 +23,8 @@ export interface VillageSuggestion {
   /** Towns only. */
   pincode?: string;
   postOffice?: string;
+  /** Approximate straight-line km from the cafe; absent when the cafe or place point is unknown or rough. */
+  distanceKm?: number;
 }
 
 /** One field of POST /api/address/resolve. */
