@@ -12,6 +12,7 @@ import { getCompleteness, flattenProfileData, buildVisibleSections } from '../..
 import { ExtractProfileTarget, type ExtractSaveTarget } from '../../shared/ExtractProfileTarget';
 import { REVEAL_EASE as EASE, useReveal } from '../../shared/useReveal';
 import { QrNote } from '../../shared/QrNote';
+import { VillageField } from './village-field/VillageField';
 
 interface Person { id: string; name: string; displayLabel: string; relationship: string; createdAt: string; updatedAt: string; }
 interface Household { phone: string; person_count: string; persons: Person[]; }
@@ -183,6 +184,15 @@ export default function CustomerDetail() {
     if (!selectedPerson) return;
     try {
       await api.patch(`/customers/persons/${selectedPerson}`, { fields: { [key]: { value, source: 'manual', confidence: 1 } } });
+      await loadPerson(selectedPerson); loadReadiness();
+    } catch (e: any) { setError(e.message); }
+    setEditingField(null);
+  };
+  /** Several fields in one update (village plus the address fields picked from LGD). */
+  const saveFields = async (fields: Record<string, any>) => {
+    if (!selectedPerson) return;
+    try {
+      await api.patch(`/customers/persons/${selectedPerson}`, { fields });
       await loadPerson(selectedPerson); loadReadiness();
     } catch (e: any) { setError(e.message); }
     setEditingField(null);
@@ -527,7 +537,7 @@ export default function CustomerDetail() {
                 const sflat = flattenProfileData(raw);
                 const rows = section.dynamic
                   ? section.fields.filter((f) => !!sflat[f.key])
-                  : section.fields.filter((f) => !!sflat[f.key] || f.required).concat(
+                  : section.fields.filter((f) => !!sflat[f.key] || f.required || f.key === 'village').concat(
                       section.extraKeys
                         .filter((k) => !!sflat[k] && !section.fields.some((f) => f.key === k))
                         .map((k) => ({
@@ -566,7 +576,14 @@ export default function CustomerDetail() {
                             >
                               {f.label}{f.required && !val ? ' *' : ''}
                             </span>
-                            {isEditing ? (
+                            {isEditing && f.key === 'village' ? (
+                              <VillageField
+                                initial={val || ''}
+                                profile={sflat}
+                                onSave={saveFields}
+                                onCancel={() => setEditingField(null)}
+                              />
+                            ) : isEditing ? (
                               <input
                                 autoFocus
                                 value={editValue}

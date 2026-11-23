@@ -13,4 +13,10 @@
 
 ## Purpose and rules
 
-_Not written yet. Describe what this package owns, what it must not do, and how it talks to its neighbours. Update this file in the same change as the code._
+Only parts documented so far:
+
+- **Profile village field** (`src/features/customers/village-field/`): while the operator types a
+  village, LGD villages and hamlets are suggested (`GET /api/address/villages`). Picking one offers
+  sub-district, block, district and state from LGD, and post office and police station that other
+  operators saved (`POST /api/address/resolve`), as ticked rows confirmed before saving. Rows that
+  differ from the profile or need checking start unticked. Contract: `docs/contracts/address-api.md`.
