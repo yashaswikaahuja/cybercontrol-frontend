@@ -16,7 +16,7 @@
 Only parts documented so far:
 
 - **Profile village field** (`src/features/customers/village-field/`): while the operator types a
-  village, LGD villages and hamlets are suggested (`GET /api/address/villages`). Picking one offers
+  village, LGD villages, hamlets and towns (with PIN) are suggested (`GET /api/address/villages`). Picking one offers
   sub-district, block, district and state from LGD, and post office and police station that other
   operators saved (`POST /api/address/resolve`), as ticked rows confirmed before saving. Values that
   differ from the profile are ticked and shown as replacing it; only learned values still in doubt

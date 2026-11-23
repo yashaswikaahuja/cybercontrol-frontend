@@ -17,7 +17,8 @@ const muted = { color: 'hsl(var(--pt-muted))' };
 const review = { color: 'hsl(35 92% 38%)', background: 'hsl(35 92% 48% / 0.12)' };
 
 const place = (s: VillageSuggestion) => [
-  s.lgdVillage ? `hamlet of ${s.lgdVillage}` : null, s.subDistrict, `${s.district}, ${s.state}`,
+  s.kind === 'town' ? `town · PIN ${s.pincode}` : s.lgdVillage ? `hamlet of ${s.lgdVillage}` : null,
+  s.subDistrict, `${s.district}, ${s.state}`,
 ].filter(Boolean).join(' · ');
 
 /**
@@ -41,12 +42,14 @@ export function VillageField({ initial, profile, onSave, onCancel }: Props) {
     setPick(s); setQuery(s.name); setOpen(false); setRows(null);
     let resolved: Record<string, ResolvedField> = {};
     try {
-      const input = {
-        village: s.name, district: s.district, state: s.state,
-        ...(s.subDistrict ? { sub_district: s.subDistrict } : {}),
-        ...(s.block ? { block: s.block } : {}),
-        ...(profile.pincode ? { pincode: profile.pincode } : {}),
-      };
+      const input = s.kind === 'town'
+        ? { post_office: s.postOffice, pincode: s.pincode, district: s.district, state: s.state }
+        : {
+          village: s.name, district: s.district, state: s.state,
+          ...(s.subDistrict ? { sub_district: s.subDistrict } : {}),
+          ...(s.block ? { block: s.block } : {}),
+          ...(profile.pincode ? { pincode: profile.pincode } : {}),
+        };
       const r = await api.post('/address/resolve', { input }, { skipErrorToast: true } as any);
       resolved = r.data?.fields || {};
     } catch {
@@ -83,10 +86,10 @@ export function VillageField({ initial, profile, onSave, onCancel }: Props) {
   const showList = open && !pick && items.length > 0;
   const q = query.trim();
   const status = pick ? null
-    : q.length < 2 ? 'Type 2 or more letters to see LGD villages.'
+    : q.length < 2 ? 'Type 2 or more letters to see villages and towns.'
       : loading ? 'Searching LGD villages…'
         : failed ? 'Suggestions are unavailable. Enter saves the name as typed.'
-          : open && !items.length ? 'Not found in LGD. Enter saves the name as typed.' : null;
+          : open && !items.length ? 'No village or town found. Enter saves the name as typed.' : null;
   const ticked = rows?.filter((r) => r.checked).length ?? 0;
 
   return (
@@ -107,10 +110,10 @@ export function VillageField({ initial, profile, onSave, onCancel }: Props) {
         style={{ background: 'hsl(var(--marigold) / 0.1)', border: '1px solid hsl(var(--marigold) / 0.4)', ...ink }}
       />
       {showList && (
-        <ul id={listId} role="listbox" aria-label="LGD villages" className="mt-1 rounded-lg overflow-hidden max-h-64 overflow-y-auto"
+        <ul id={listId} role="listbox" aria-label="Villages and towns" className="mt-1 rounded-lg overflow-hidden max-h-64 overflow-y-auto"
           style={{ background: 'hsl(var(--pt-card))', border: '1px solid hsl(var(--pt-border))' }}>
           {items.map((s, i) => (
-            <li key={`${s.code}-${s.name}`} id={`${listId}-${i}`} role="option" aria-selected={i === active}
+            <li key={`${s.kind}-${s.code ?? s.pincode}-${s.name}-${s.district}`} id={`${listId}-${i}`} role="option" aria-selected={i === active}
               onMouseDown={(e) => { e.preventDefault(); void choose(s); }}
               onMouseEnter={() => setActive(i)}
               className="px-3 py-2 cursor-pointer"
@@ -126,7 +129,7 @@ export function VillageField({ initial, profile, onSave, onCancel }: Props) {
       {pick && (
         <div className="mt-2 rounded-lg px-3 py-2" style={{ border: '1px solid hsl(var(--pt-border))', background: 'hsl(var(--pt-secondary) / 0.35)' }}>
           <p className="text-[11px] mb-1.5" style={muted}>
-            {pick.lgdVillage ? `${pick.name} is a hamlet of ${pick.lgdVillage} (LGD). ` : ''}Fill the rest of the address:
+            {pick.kind === 'town' ? `${pick.name} is a town (India Post, PIN ${pick.pincode}). ` : pick.lgdVillage ? `${pick.name} is a hamlet of ${pick.lgdVillage} (LGD). ` : ''}Fill the rest of the address:
           </p>
           {!rows ? (
             <p role="status" className="text-[12px]" style={muted}>Looking up the address…</p>

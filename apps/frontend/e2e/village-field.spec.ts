@@ -39,7 +39,7 @@ test('picking a village saves the village and the ticked address fields', async 
       return json({ ok: true, id: 'p1', created: false, redirected: false, name: 'Test Person' });
     }
     if (url.pathname.endsWith('/address/villages')) {
-      return json([{ code: 255133, name: 'Bikaipur', lgdVillage: null, subDistrict: 'Muhra', block: 'Mohra', district: 'Gaya', state: 'Bihar' }]);
+      return json([{ kind: 'village', code: 255133, name: 'Bikaipur', lgdVillage: null, subDistrict: 'Muhra', block: 'Mohra', district: 'Gaya', state: 'Bihar' }]);
     }
     if (url.pathname.endsWith('/address/resolve')) {
       return json({ fields: { police_station: { value: 'Atri', source: 'learned', confidence: 0.85, needsReview: false } }, options: {} });
@@ -79,7 +79,7 @@ test('a differing value is ticked and replaces the old one; a doubtful learned v
     if (path.endsWith('/customers/households')) return json([{ phone: PHONE, persons: [{ id: 'p1', name: 'Test Person', display_label: 'Test Person', relationship: 'self' }] }]);
     if (path.endsWith('/customers/persons/p1') && req.method() === 'GET') return json({ id: 'p1', name: 'Test Person', display_label: 'Test Person', data });
     if (path.endsWith('/customers/persons/p1')) { const b = req.postDataJSON(); patches.push(b); Object.assign(data, b.fields); return json({ ok: true, id: 'p1' }); }
-    if (path.endsWith('/address/villages')) return json([{ code: 255133, name: 'Charwara', lgdVillage: 'Bikaipur', subDistrict: 'Muhra', block: 'Mohra', district: 'Gaya', state: 'Bihar' }]);
+    if (path.endsWith('/address/villages')) return json([{ kind: 'hamlet', code: 255133, name: 'Charwara', lgdVillage: 'Bikaipur', subDistrict: 'Muhra', block: 'Mohra', district: 'Gaya', state: 'Bihar' }]);
     if (path.endsWith('/address/resolve')) return json({ fields: { police_station: { value: 'Atri', source: 'learned', confidence: 0.5, needsReview: true } }, options: {} });
     return json([]);
   });
@@ -95,4 +95,38 @@ test('a differing value is ticked and replaces the old one; a doubtful learned v
   await expect.poll(() => patches.length).toBe(1);
   expect(patches[0].fields.sub_district).toMatchObject({ value: 'Muhra' });
   expect(patches[0].fields.police_station).toBeUndefined();
+});
+
+test('picking a town fills city, post office and PIN from India Post', async ({ page }) => {
+  const data: Record<string, any> = { state: { value: 'Bihar', source: 'manual' } };
+  const patches: any[] = [];
+  await page.addInitScript((auth) => { localStorage.setItem('cc-auth', JSON.stringify(auth)); }, AUTH);
+  await page.route('**/socket.io/**', (route) => route.abort());
+  await page.route('**/api/**', async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path.endsWith('/customers/households')) return json([{ phone: PHONE, persons: [{ id: 'p1', name: 'Test Person', display_label: 'Test Person', relationship: 'self' }] }]);
+    if (path.endsWith('/customers/persons/p1') && req.method() === 'GET') return json({ id: 'p1', name: 'Test Person', display_label: 'Test Person', data });
+    if (path.endsWith('/customers/persons/p1')) { const b = req.postDataJSON(); patches.push(b); Object.assign(data, b.fields); return json({ ok: true, id: 'p1' }); }
+    if (path.endsWith('/address/villages')) {
+      return json([{ kind: 'town', code: null, name: 'Rajgir', lgdVillage: null, subDistrict: null, block: null, district: 'Nalanda', state: 'Bihar', pincode: '803116', postOffice: 'Rajgir' }]);
+    }
+    if (path.endsWith('/address/resolve')) return json({ fields: {}, options: {} });
+    return json([]);
+  });
+  await page.goto(`/app/customers/${PHONE}?person=p1`, { waitUntil: 'domcontentloaded' });
+  const villageRow = page.locator('div', { has: page.locator('span', { hasText: /^Village$/ }) }).filter({ has: page.locator('button') }).last();
+  await villageRow.getByRole('button').first().click();
+  await page.getByRole('combobox', { name: 'Village' }).fill('Rajgir');
+  await expect(page.getByRole('option', { name: /town .* PIN 803116/ })).toBeVisible();
+  await page.getByRole('option').first().click();
+  await page.getByRole('button', { name: 'Save village + 4 fields' }).click();
+  await expect.poll(() => patches.length).toBe(1);
+  const f = patches[0].fields;
+  expect(f.city).toMatchObject({ value: 'Rajgir' });
+  expect(f.district).toMatchObject({ value: 'Nalanda' });
+  expect(f.post_office).toMatchObject({ value: 'Rajgir' });
+  expect(f.pincode).toMatchObject({ value: '803116' });
+  expect(f.state, 'already Bihar').toBeUndefined();
 });

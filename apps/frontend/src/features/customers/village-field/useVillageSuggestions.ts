@@ -3,9 +3,8 @@ import api from '../../../shared/api';
 import type { VillageSuggestion } from './fillRows';
 
 /**
- * LGD villages and hamlets matching what the operator types (GET /address/villages).
- * Narrowed by the profile's district; when that finds nothing (district missing or spelt
- * differently), the state, then all of India, is searched instead.
+ * LGD villages, hamlets and towns matching what the operator types (GET /address/villages).
+ * The profile's district and state rank results near the customer first.
  */
 export function useVillageSuggestions(query: string, district: string, state: string, enabled: boolean) {
   const [items, setItems] = useState<VillageSuggestion[]>([]);
@@ -18,18 +17,13 @@ export function useVillageSuggestions(query: string, district: string, state: st
     let cancelled = false;
     setLoading(true);
     const timer = setTimeout(async () => {
-      const attempts = [
-        district ? { q, district, state } : null,
-        state ? { q, state } : null,
-        { q },
-      ].filter(Boolean) as Record<string, string>[];
+      // The server ranks the profile's district, then its state, then the rest of India.
+      const params: Record<string, string> = { q };
+      if (district) params.district = district;
+      if (state) params.state = state;
       try {
-        let found: VillageSuggestion[] = [];
-        for (const params of attempts) {
-          const r = await api.get('/address/villages', { params, skipErrorToast: true } as any);
-          found = Array.isArray(r.data) ? r.data : [];
-          if (found.length || cancelled) break;
-        }
+        const r = await api.get('/address/villages', { params, skipErrorToast: true } as any);
+        const found: VillageSuggestion[] = Array.isArray(r.data) ? r.data : [];
         if (!cancelled) { setItems(found); setFailed(false); }
       } catch {
         if (!cancelled) { setItems([]); setFailed(true); }

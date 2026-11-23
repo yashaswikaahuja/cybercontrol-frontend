@@ -1,5 +1,6 @@
 /** Address fields the village pick can fill, in profile order. */
 export const FILL_FIELDS = [
+  { key: 'city', label: 'City' },
   { key: 'sub_district', label: 'Sub-District / Tehsil' },
   { key: 'block', label: 'Block' },
   { key: 'district', label: 'District' },
@@ -10,13 +11,18 @@ export const FILL_FIELDS = [
 ] as const;
 
 export interface VillageSuggestion {
-  code: number;
+  /** village: LGD village. hamlet: linked to an LGD village. town: India Post head or sub office. */
+  kind: 'village' | 'hamlet' | 'town';
+  code: number | null;
   name: string;
   lgdVillage: string | null;
   subDistrict: string | null;
   block: string | null;
   district: string;
   state: string;
+  /** Towns only. */
+  pincode?: string;
+  postOffice?: string;
 }
 
 /** One field of POST /api/address/resolve. */
@@ -54,13 +60,15 @@ export function buildFillRows(
   resolved: Partial<Record<string, ResolvedField>>,
   profile: Record<string, string>,
 ): FillRow[] {
-  const lgd: Record<string, string | null> = {
+  // From the pick itself: LGD for villages and hamlets, India Post for towns.
+  const lgd: Record<string, string | null | undefined> = {
     sub_district: pick.subDistrict, block: pick.block, district: pick.district, state: pick.state,
+    ...(pick.kind === 'town' ? { city: pick.name, post_office: pick.postOffice, pincode: pick.pincode } : {}),
   };
   const rows: FillRow[] = [];
   for (const { key, label } of FILL_FIELDS) {
     const r = resolved[key];
-    const fromLgd = lgd[key];
+    const fromLgd = lgd[key] || null;
     const engine = r && (r.source === 'reference' || r.source === 'learned') ? r : null;
     const value = fromLgd || engine?.value || '';
     if (!value) continue;
