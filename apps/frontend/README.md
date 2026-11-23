@@ -18,5 +18,6 @@ Only parts documented so far:
 - **Profile village field** (`src/features/customers/village-field/`): while the operator types a
   village, LGD villages and hamlets are suggested (`GET /api/address/villages`). Picking one offers
   sub-district, block, district and state from LGD, and post office and police station that other
-  operators saved (`POST /api/address/resolve`), as ticked rows confirmed before saving. Rows that
-  differ from the profile or need checking start unticked. Contract: `docs/contracts/address-api.md`.
+  operators saved (`POST /api/address/resolve`), as ticked rows confirmed before saving. Values that
+  differ from the profile are ticked and shown as replacing it; only learned values still in doubt
+  start unticked. Test: `e2e/village-field.spec.ts`. Contract: `docs/contracts/address-api.md`.

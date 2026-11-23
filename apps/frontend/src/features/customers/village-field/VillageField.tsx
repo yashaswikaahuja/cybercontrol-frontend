@@ -143,8 +143,8 @@ export function VillageField({ initial, profile, onSave, onCancel }: Props) {
                       <span style={muted}>{r.label}: </span>
                       <span style={ink}>{r.value}</span>
                       <span className="ml-1 text-[10px]" style={muted}>{r.origin === 'learned' ? 'saved by operators' : 'LGD'}</span>
-                      {r.needsReview && <span className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={review}>Check</span>}
-                      {r.current && <span className="block text-[11px]" style={muted}>Profile now: {r.current}</span>}
+                      {r.needsReview && <span className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={review}>Check, then tick</span>}
+                      {r.current && <span className="block text-[11px]" style={muted}>{r.checked ? 'replaces' : 'keeps'}: {r.current}</span>}
                     </span>
                   </label>
                 </li>
@@ -156,7 +156,7 @@ export function VillageField({ initial, profile, onSave, onCancel }: Props) {
 
       <div className="mt-2 flex gap-2">
         <button type="button" onClick={() => void save()} disabled={saving} className="btn-primary text-xs px-3 py-1.5">
-          {saving ? 'Saving…' : ticked ? `Save village + ${ticked} field${ticked === 1 ? '' : 's'}` : 'Save'}
+          {saving ? 'Saving…' : ticked ? `Save village + ${ticked} field${ticked === 1 ? '' : 's'}` : rows?.length ? 'Save village only' : 'Save'}
         </button>
         <button type="button" onClick={onCancel} disabled={saving} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
       </div>

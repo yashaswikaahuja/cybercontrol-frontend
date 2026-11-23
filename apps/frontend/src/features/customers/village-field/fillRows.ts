@@ -35,9 +35,9 @@ export interface FillRow {
   origin: 'reference' | 'learned';
   needsReview: boolean;
   confidence: number;
-  /** What the profile has now, when it differs. */
+  /** What the profile has now, when it differs (the save replaces it). */
   current: string;
-  /** Ticked by default: the profile field is empty and the value is not in doubt. */
+  /** Ticked by default unless it is a learned value still in doubt. */
   checked: boolean;
 }
 
@@ -46,7 +46,8 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 /**
  * Rows to offer after a village is picked. LGD fields come from the pick itself; post office,
  * police station and pincode only from the engine (learned facts or the pincode's offices).
- * Values the profile already has are left out; differing ones are offered unticked.
+ * Values the profile already has are left out. The operator picked this village, so differing
+ * values are ticked too (shown as replacing the old one); only learned values in doubt are not.
  */
 export function buildFillRows(
   pick: VillageSuggestion,
@@ -71,7 +72,7 @@ export function buildFillRows(
       key, label, value, origin, needsReview,
       confidence: fromLgd ? 0.95 : engine!.confidence,
       current,
-      checked: !current && !needsReview,
+      checked: !needsReview,
     });
   }
   return rows;
